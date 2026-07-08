@@ -266,6 +266,23 @@ class KClient:
 
                         if isinstance(payload, dict):
                             self._mark_ready(url)
+                            # DEBUG: log the raw per-frame delta so light/LED
+                            # fields can be discovered. Frames are deltas, so
+                            # this only shows what actually changed.
+                            if _LOGGER.isEnabledFor(logging.DEBUG):
+                                light_fields = {
+                                    k: v for k, v in payload.items()
+                                    if "light" in k.lower() or "led" in k.lower()
+                                }
+                                if light_fields:
+                                    _LOGGER.debug(
+                                        "K WS light fields host=%s: %s", self._host, light_fields
+                                    )
+                                else:
+                                    _LOGGER.debug(
+                                        "K WS raw frame host=%s keys=%s payload=%s",
+                                        self._host, list(payload.keys()), payload,
+                                    )
                             merged = coerce_numbers(payload)
                             self._state.update(merged)
                             self.msg_count += 1
