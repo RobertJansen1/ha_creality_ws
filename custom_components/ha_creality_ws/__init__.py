@@ -194,6 +194,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get("_cached_max_bed_temp") is None or
         entry.data.get("_cached_max_nozzle_temp") is None
     )
+
+    # Also re-cache if LED brightness capability keys are missing (migration from
+    # versions before LED dimming support). Check key presence, not value, since
+    # led_pin is legitimately None for models without brightness control.
+    should_re_cache = should_re_cache or (
+        "_cached_has_brightness_control" not in entry.data or
+        "_cached_led_pin" not in entry.data
+    )
     
     # Re-cache if CFS info is missing but cfsConnect is 1
     if not should_re_cache and coord.data.get("cfsConnect") == 1 and not entry.data.get("_cached_cfs_detected"):
