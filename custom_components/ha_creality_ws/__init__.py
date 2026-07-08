@@ -245,6 +245,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 new_data["_cached_hostname"] = hostname
                 new_data["_cached_model_version"] = model_version
                 new_data["_cached_has_light"] = printermodel.has_light
+                new_data["_cached_has_brightness_control"] = printermodel.has_brightness_control
+                new_data["_cached_led_pin"] = printermodel.led_pin
                 # Prefer chamber_* keys; mirror to legacy box_* for back-compat
                 new_data["_cached_has_chamber_sensor"] = printermodel.has_chamber_sensor
                 new_data["_cached_has_chamber_control"] = printermodel.has_chamber_control
