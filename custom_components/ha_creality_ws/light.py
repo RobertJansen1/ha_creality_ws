@@ -40,46 +40,29 @@ class _KLight(KEntity, LightEntity):
         # so remember the last set brightness to report it back to HA.
         self._brightness: int | None = None
 
-    def _light_level(self) -> float | None:
-        """Return the reported LED level as a float, or None if unknown.
-
-        The printer may report ``lightSw`` as an int switch (0/1), a float PWM
-        level (0..1, matching Klipper ``SET_PIN PIN=LED VALUE=<0..1>``), or a
-        numeric string. Parse all of these into a float so state feedback is
-        reliable instead of relying on ``bool()`` truthiness.
-        """
+    def _is_on(self) -> bool:
+        """Return whether the LED is on, based on the lightSw switch (0/1)."""
         val = self.coordinator.data.get("lightSw")
         if val is None:
-            return None
+            return False
         try:
-            return float(val)
+            return float(val) > 0
         except (TypeError, ValueError):
-            return None
+            return False
 
     @property
     def is_on(self) -> bool | None:
         if self._should_zero():
             return False
-        level = self._light_level()
-        if level is None:
-            return False
-        return level > 0
+        return self._is_on()
 
     @property
     def brightness(self) -> int | None:
-        if self._should_zero():
+        if self._should_zero() or not self._is_on():
             return None
-        level = self._light_level()
-        if level is None or level <= 0:
-            return None
-        # Firmware that reports a real PWM fraction (0<level<1): use it directly.
-        if level < 1:
-            return max(1, round(level * 255))
-        # level == 1 (binary "on"): no reported dim level, use remembered value.
-        if level <= 1:
-            return self._brightness if self._brightness is not None else 255
-        # Reported on a larger scale (e.g. 0..255).
-        return min(255, round(level))
+        # This firmware never reports the dim level, so report the remembered
+        # value (or full brightness if we never set one).
+        return self._brightness if self._brightness is not None else 255
 
     async def async_turn_on(self, **kwargs):
         brightness = kwargs.get(ATTR_BRIGHTNESS)
