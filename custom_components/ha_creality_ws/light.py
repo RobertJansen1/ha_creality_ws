@@ -83,7 +83,7 @@ class _KLight(KEntity, LightEntity):
         # in sync, then apply the dim level. Telemetry never reports the level,
         # so remember it to report brightness back to HA.
         await self.coordinator.client.send_set_retry(lightSw=1)
-        value = round(b / 255, 2)
+        value = round(b / 255, 4)
         await self.coordinator.client.send_set_retry(gcodeCmd=f"SET_PIN PIN=LED VALUE={value}")
         self._brightness = b
         self.async_write_ha_state()
