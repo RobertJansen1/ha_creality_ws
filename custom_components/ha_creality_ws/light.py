@@ -84,16 +84,26 @@ class _KLight(KEntity, LightEntity):
     async def async_turn_on(self, **kwargs):
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         if brightness is None:
-            # Plain on: keep it simple and compatible across models.
+            # Plain on: the lightSw switch turns the LED to full brightness.
             await self.coordinator.client.send_set_retry(lightSw=1)
-        else:
-            # Dim via Klipper: SET_PIN PIN=LED VALUE=<0..1>.
-            b = max(0, min(255, int(brightness)))
-            value = round(b / 255, 2)
-            await self.coordinator.client.send_set_retry(gcodeCmd=f"SET_PIN PIN=LED VALUE={value}")
-            # Remember the level; telemetry reports only 0/1 so it won't come back.
-            self._brightness = b
+            self._brightness = 255
             self.async_write_ha_state()
+            return
+
+        b = max(0, min(255, int(brightness)))
+        if b <= 0:
+            await self.async_turn_off()
+            return
+
+        # SET_PIN (Klipper) sets the real PWM level but does NOT update the
+        # Creality lightSw state. Send lightSw=1 first so on/off telemetry stays
+        # in sync, then apply the dim level. Telemetry never reports the level,
+        # so remember it to report brightness back to HA.
+        await self.coordinator.client.send_set_retry(lightSw=1)
+        value = round(b / 255, 2)
+        await self.coordinator.client.send_set_retry(gcodeCmd=f"SET_PIN PIN=LED VALUE={value}")
+        self._brightness = b
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs):
         await self.coordinator.client.send_set_retry(lightSw=0)
