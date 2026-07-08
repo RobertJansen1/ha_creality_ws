@@ -36,6 +36,9 @@ class _KLight(KEntity, LightEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, self._attr_name, "light")
+        # This firmware reports lightSw only as 0/1 (on/off), not the dim level,
+        # so remember the last set brightness to report it back to HA.
+        self._brightness: int | None = None
 
     def _light_level(self) -> float | None:
         """Return the reported LED level as a float, or None if unknown.
@@ -69,10 +72,13 @@ class _KLight(KEntity, LightEntity):
         level = self._light_level()
         if level is None or level <= 0:
             return None
-        # 0..1 PWM level (incl. a plain "1" switch) -> 1..255 scale.
-        if level <= 1:
+        # Firmware that reports a real PWM fraction (0<level<1): use it directly.
+        if level < 1:
             return max(1, round(level * 255))
-        # Already reported on a larger scale (e.g. 0..255) or a plain flag.
+        # level == 1 (binary "on"): no reported dim level, use remembered value.
+        if level <= 1:
+            return self._brightness if self._brightness is not None else 255
+        # Reported on a larger scale (e.g. 0..255).
         return min(255, round(level))
 
     async def async_turn_on(self, **kwargs):
@@ -85,6 +91,9 @@ class _KLight(KEntity, LightEntity):
             b = max(0, min(255, int(brightness)))
             value = round(b / 255, 2)
             await self.coordinator.client.send_set_retry(gcodeCmd=f"SET_PIN PIN=LED VALUE={value}")
+            # Remember the level; telemetry reports only 0/1 so it won't come back.
+            self._brightness = b
+            self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs):
         await self.coordinator.client.send_set_retry(lightSw=0)
