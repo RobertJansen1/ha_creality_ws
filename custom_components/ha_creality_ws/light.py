@@ -36,21 +36,44 @@ class _KLight(KEntity, LightEntity):
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, self._attr_name, "light")
-        # Telemetry only reports lightSw (0/1), not a level, so brightness is optimistic.
-        self._optimistic_brightness: int | None = None
+
+    def _light_level(self) -> float | None:
+        """Return the reported LED level as a float, or None if unknown.
+
+        The printer may report ``lightSw`` as an int switch (0/1), a float PWM
+        level (0..1, matching Klipper ``SET_PIN PIN=LED VALUE=<0..1>``), or a
+        numeric string. Parse all of these into a float so state feedback is
+        reliable instead of relying on ``bool()`` truthiness.
+        """
+        val = self.coordinator.data.get("lightSw")
+        if val is None:
+            return None
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
 
     @property
     def is_on(self) -> bool | None:
         if self._should_zero():
             return False
-        val = self.coordinator.data.get("lightSw")
-        return bool(val) if val is not None else False
+        level = self._light_level()
+        if level is None:
+            return False
+        return level > 0
 
     @property
     def brightness(self) -> int | None:
-        if self._should_zero() or not self.is_on:
+        if self._should_zero():
             return None
-        return self._optimistic_brightness if self._optimistic_brightness is not None else 255
+        level = self._light_level()
+        if level is None or level <= 0:
+            return None
+        # 0..1 PWM level (incl. a plain "1" switch) -> 1..255 scale.
+        if level <= 1:
+            return max(1, round(level * 255))
+        # Already reported on a larger scale (e.g. 0..255) or a plain flag.
+        return min(255, round(level))
 
     async def async_turn_on(self, **kwargs):
         brightness = kwargs.get(ATTR_BRIGHTNESS)
@@ -59,14 +82,9 @@ class _KLight(KEntity, LightEntity):
             await self.coordinator.client.send_set_retry(lightSw=1)
         else:
             # Dim via Klipper: SET_PIN PIN=LED VALUE=<0..1>.
-            value = round(max(0, min(255, int(brightness))) / 255, 2)
+            b = max(0, min(255, int(brightness)))
+            value = round(b / 255, 2)
             await self.coordinator.client.send_set_retry(gcodeCmd=f"SET_PIN PIN=LED VALUE={value}")
-            self._optimistic_brightness = int(brightness)
-        # Optimistic state update; real telemetry will reconcile on next frame.
-        self.coordinator.data["lightSw"] = 1
-        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs):
         await self.coordinator.client.send_set_retry(lightSw=0)
-        self.coordinator.data["lightSw"] = 0
-        self.async_write_ha_state()
